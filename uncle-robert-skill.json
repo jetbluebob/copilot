@@ -1,0 +1,145 @@
+{
+  "$schema": "https://microsoft.github.io/copilot-plugins/schemas/2024-05-01/skillManifest.json",
+  "manifestVersion": "0.1",
+
+  /*—IDENTITY—*/
+  "id": "0dd3a5b8-cfb1-46a2-b258-4a4cff3d923b",
+  "name": "Uncle Robert Skill",
+  "description": "Graph-based utilities (file fetch, calendar, mail, search) used by Uncle Robert for Brinkley at TAMU.",
+  "publisher": "YourOrg",
+
+  /*—AUTH—*/
+  "authentication": {
+    "type": "AAD",
+    "resource": "https://graph.microsoft.com"
+  },
+
+  /*—SCOPES (least-privilege for listed actions)—*/
+  "permissions": [
+    "Files.Read.All",
+    "Calendars.ReadWrite",
+    "Mail.ReadWrite",
+    "Mail.Send",
+    "offline_access",
+    "User.Read"
+  ],
+
+  /*—DEFAULT CONTEXT—*/
+  "defaultContext": {
+    "timezone": "America/Chicago",
+    "locale": "en-US"
+  },
+
+  /*────────────────────  ACTIONS  ────────────────────*/
+  "actions": [
+
+    { /* 1. GET file content so the copilot can summarise it */
+      "operationId": "summarizeDocument",
+      "name": "summarizeDocument",
+      "description": "Download a OneDrive / SharePoint file (any type) so the copilot can generate a summary.",
+      "type": "graph",
+      "method": "GET",
+      "urlTemplate": "https://graph.microsoft.com/v1.0/me/drive/items/{fileId}/content",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "description": "The file ID to retrieve."
+          }
+        },
+        "required": ["fileId"]
+      }
+    },
+
+    { /* 2. Add an event with a single reminder */
+      "operationId": "addCalendarEvent",
+      "name": "addCalendarEvent",
+      "description": "Create a personal calendar event and set one reminder.",
+      "type": "graph",
+      "method": "POST",
+      "urlTemplate": "https://graph.microsoft.com/v1.0/me/events",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "subject":       { "type": "string" },
+          "startDateTime": { "type": "string", "format": "date-time" },
+          "endDateTime":   { "type": "string", "format": "date-time" },
+          "reminder":      { "type": "integer", "description": "Minutes before start" }
+        },
+        "required": ["subject", "startDateTime", "endDateTime"]
+      },
+      "requestBody": {
+        "subject": "{subject}",
+        "start": { "dateTime": "{startDateTime}", "timeZone": "America/Chicago" },
+        "end":   { "dateTime": "{endDateTime}",   "timeZone": "America/Chicago" },
+        "reminderMinutesBeforeStart": "{reminder}"
+      }
+    },
+
+    { /* 3. Keyword search in OneDrive (returns up to 3 files) */
+      "operationId": "searchFiles",
+      "name": "searchFiles",
+      "description": "Return the three most relevant OneDrive items for a search term.",
+      "type": "graph",
+      "method": "POST",
+      "urlTemplate": "https://graph.microsoft.com/v1.0/search/query",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string" }
+        },
+        "required": ["query"]
+      },
+      "requestBody": {
+        "requests": [
+          {
+            "entityTypes": ["driveItem"],
+            "query": { "queryString": "{query}" },
+            "from": 0,
+            "size": 3
+          }
+        ]
+      }
+    },
+
+    { /* 4. Create an e-mail draft (stays in Drafts until user sends) */
+      "operationId": "draftEmail",
+      "name": "draftEmail",
+      "description": "Create an Outlook draft message; user must send manually.",
+      "type": "graph",
+      "method": "POST",
+      "urlTemplate": "https://graph.microsoft.com/v1.0/me/messages",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "to":      { "type": "string" },
+          "subject": { "type": "string" },
+          "body":    { "type": "string" }
+        },
+        "required": ["to", "subject", "body"]
+      },
+      "requestBody": {
+        "message": {
+          "subject": "{subject}",
+          "body": { "contentType": "HTML", "content": "{body}" },
+          "toRecipients": [
+            { "emailAddress": { "address": "{to}" } }
+          ],
+          "importance": "normal"
+        },
+        "saveToSentItems": "false"
+      }
+    }
+
+  ],
+
+  /*—OPTIONAL GUARD-RAILS—*/
+  "guardrails": {
+    "instructions": [
+      "Always confirm with the user before sending email or adding events.",
+      "No plagiarised content; provide citations.",
+      "Forget stored notes on request; purge after 120 days."
+    ]
+  }
+}
